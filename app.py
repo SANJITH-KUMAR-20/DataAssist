@@ -2,9 +2,13 @@ import os
 from apikey import key
 import streamlit as st
 import pandas as pd
-
+from langchain.prompts import PromptTemplate
+from langchain.chains import LLMChain, SimpleSequentialChain, SequentialChain
+from langchain.agents.agent_toolkits import create_pandas_dataframe_agent, python
+from langchain_experimental.tools import PythonREPLTool
+from langchain.agents.agent_types import AgentType
+from langchain.utilities import wikipedia
 from langchain.llms import openai
-from langchain_experimental.agents import create_pandas_dataframe_agent
 from dotenv import load_dotenv, find_dotenv
 
 
@@ -77,15 +81,15 @@ if st.session_state.clicked[1]:
                                             statistics as the number of missing values in each columns and provide suggestions on how to remove them
                                             or impute them ?''')
             st.write(missing_values)
-            duplicates = pandas_agent.run("Is there any duplicates in the data...? If yes give some statistics, Give more suggestions on how to deal with them")
-            st.write(duplicates)
-            st.write("**Data Summarization**")
-            st.write(df.describe())
-            corr_analysis = pandas_agent.run('''Is there any significant correlation between the columns of the data
-                                            ?, give the correlation analysis of the data.''')
-            st.write(corr_analysis)
-            outliers_analysis = pandas_agent.run('''Is there any outliers that i should pay attention to...? If yes... give some suggestions''')
-            st.write(outliers_analysis)
+            # duplicates = pandas_agent.run("Is there any duplicates in the data...? If yes give some statistics, Give more suggestions on how to deal with them")
+            # st.write(duplicates)
+            # st.write("**Data Summarization**")
+            # st.write(df.describe())
+            # corr_analysis = pandas_agent.run('''Is there any significant correlation between the columns of the data
+            #                                 ?, give the correlation analysis of the data.''')
+            # st.write(corr_analysis)
+            # outliers_analysis = pandas_agent.run('''Is there any outliers that i should pay attention to...? If yes... give some suggestions''')
+            # st.write(outliers_analysis)
             return
 
 
@@ -96,15 +100,36 @@ if st.session_state.clicked[1]:
             st.write(summary)
             return
 
-    
+        @st.cache_data
+        def function_ques_data():
+            info = pandas_agent.run(extra_ques)
+            st.write(info)
+            return
 
-    with st.sidebar:
-        with st.expander("Choose from this"):
-            st.write(steps_eda())
+        with st.sidebar:
+            with st.expander("Choose from this"):
+                st.write(steps_eda())
 
 
-    function_agent()
+        function_agent()
 
-    st.subheader("Variable of study")
-    user_ques = st.text_input("what is your variable of interest")
+        st.subheader("Variable of study")
+        user_ques = st.text_input("what is your variable of interest")
 
+        func_ques_var()
+
+        if user_ques:
+            extra_ques = st.text_input("Is there you wish to ask about the data..?")
+            if extra_ques == "No":
+                st.write("")
+
+                if extra_ques:
+                    st.divider()
+                    st.header("Data Science Problem")
+                    st.write("Now that we have a solid grasp of data at hand and a clear understanding of how data works... let us frame this into a data science problem")
+                    
+
+            if extra_ques and user_ques:
+                function_ques_data()
+
+            
