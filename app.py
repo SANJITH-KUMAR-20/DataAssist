@@ -7,7 +7,8 @@ from langchain.chains import LLMChain, SimpleSequentialChain, SequentialChain
 from langchain.agents.agent_toolkits import create_pandas_dataframe_agent, python
 from langchain_experimental.tools import PythonREPLTool
 from langchain.agents.agent_types import AgentType
-from langchain.utilities import wikipedia
+from langchain.utilities import WikipediaAPIWrapper
+from langchain_experimental.agents.agent_toolkits import create_python_agent
 from langchain.llms import openai
 from dotenv import load_dotenv, find_dotenv
 
@@ -51,10 +52,6 @@ if st.session_state.clicked[1]:
 
     csv = st.file_uploader("upload your file here", type = "csv")
 
-
-    @st.cache_data
-    def steps_eda():
-        return llm("What are the steps for EDA")
     
     if csv:
         csv.seek(0)
@@ -105,11 +102,65 @@ if st.session_state.clicked[1]:
             info = pandas_agent.run(extra_ques)
             st.write(info)
             return
+        
+        @st.cache_resource
+        def wiki(prompt):
+            wiki = WikipediaAPIWrapper().run(prompt) 
+            return wiki
+        
+        @st.cache_data
+        def prompt_Template():
+            template = PromptTemplate(
+                        input_variables=["business_problem"],
+                        template = "Convert the following business problem into a data science problem : {buiness_problem}"
+                    )
+            template2 = PromptTemplate(
+                        input_variables=["Ml_problem"],
+                        template = "Give a list of machine learning algorithms for this data problem : {ML_problem}"
+                    )
+            return template, template2
+        @st.cache_data
+        def chains():
+            data_problem_chain = LLMChain(llm = llm, prompt = prompt_Template()[0], verbose=True, output_key="data_prob")
+            model_chain = LLMChain(llm = llm, prompt = prompt_Template()[1], verbose=True, output_key="model_selection")
+            seq_chain = SequentialChain(chains= [data_problem_chain, model_chain], verbose = True, input_variables=["business_problem"],output_key=["data_prob","model_selection"])
+            return seq_chain
+
+        @st.cache_data
+        def chains_out(prompt, wiki):
+            chain = chains()
+            chains_output = chain({"business_problem": prompt, "wikipedia_research": wiki})
+            data_prob = chains_output["data_prob"]
+            mod = chains_output["model_selection"]
+            return data_prob, mod
+        
+        @st.cache_data
+        def list_to_selection(my_selection_input):
+            algorithms = my_selection_input.split("\n")
+            algorithm = [algo.split(":")[-1].split('.')[-1].strip() for algo in algorithms if algo.strip()]
+            algorithm.insert(0, "Select Algorithm")
+            format_list = [f"{alg}" for alg in algorithm if alg]
+            return format_list
 
         with st.sidebar:
             with st.expander("Choose from this"):
                 st.write(steps_eda())
 
+        @st.cache_data
+        def python_agent():
+            agent_exec = create_python_agent(
+                llm = llm,
+                tool = PythonREPLTool(),
+                verbose = True,
+                agent_type = AgentType.ZERO_SHOT_RECT_DESCRIPTION,
+                handle_parsing_errors = True
+            )
+            return agent_exec
+        
+        @st.cache_data
+        def python_solution(problem, selected_alg, csv):
+            solution = python_agent().run(f"Write a python code to solve this {problem} using this algorithm{selected_alg} useg this dataset {csv}")
+            return solution
 
         function_agent()
 
@@ -122,14 +173,29 @@ if st.session_state.clicked[1]:
             extra_ques = st.text_input("Is there you wish to ask about the data..?")
             if extra_ques == "No":
                 st.write("")
-
-                if extra_ques:
-                    st.divider()
-                    st.header("Data Science Problem")
-                    st.write("Now that we have a solid grasp of data at hand and a clear understanding of how data works... let us frame this into a data science problem")
-                    
-
-            if extra_ques and user_ques:
+            if extra_ques and user_ques and extra_ques != "No":
                 function_ques_data()
+            if extra_ques:
+                st.divider()
+                st.header("Data Science Problem")
+                st.write("Now that we have a solid grasp of data at hand and a clear understanding of how data works... let us frame this into a data science problem")
+
+                prompt = st.text_area("Add your business problem...")
+                
+                
+                if prompt:
+                    wiki_rep = wiki(prompt)
+                    out = chains_out(prompt, wiki_rep)
+                    data_prob = out[0]
+                    mod = out[1]
+                    st.write(data_prob)
+                    st.write(out)
+
+                    format_i =list_to_selection(mod)
+                    selected_alg = st.selectbox("Select Machine leaning algorithm", format_i)
+                    if selected_alg:
+                        st.subheader("solution")
+                        solution = python_solution(data_prob, selected_alg, csv)
+                        st.write(solution)
 
             
